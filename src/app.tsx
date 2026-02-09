@@ -1,20 +1,27 @@
 import { Box, Text, useInput, useApp } from 'ink';
 import TextInput from 'ink-text-input';
 import { useState } from 'react';
-import { Agent } from './agent/index.js';
+import { Agent as ClaudeAgent } from './agent/claude-agent.js';
+import { Agent as OpenAIAgent } from './agent/openai-agent.js';
+
+type Provider = 'anthropic' | 'openai';
 
 type Message = {
   role: 'user' | 'assistant';
   content: string;
 };
 
-export function App() {
+function createAgent(provider: Provider) {
+  return provider === 'openai' ? new OpenAIAgent() : new ClaudeAgent();
+}
+
+export function App({ provider = 'anthropic' }: { provider?: Provider }) {
   const { exit } = useApp();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [agent] = useState(() => {
-    const a = new Agent();
+    const a = createAgent(provider);
 
     a.onAssistantText = (text) => {
       setMessages(prev => [...prev, { role: 'assistant', content: text }]);

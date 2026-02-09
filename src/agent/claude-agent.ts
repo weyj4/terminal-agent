@@ -1,5 +1,5 @@
 import Anthropic from '@anthropic-ai/sdk';
-import { toolSpecs, getToolHandler } from '../tools/index.js';
+import { toolSpecs, getToolHandler } from './claude-tools.js';
 import { systemPrompt } from '../prompts/index.js'
 
 type Message = Anthropic.MessageParam;
