@@ -9,11 +9,14 @@
     "dev": "tsx src/cli.tsx",
     "build": "tsup",
     "start": "node dist/cli.js",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest",
+    "test:ui": "vitest --ui"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.74.0",
     "ink": "^6.6.0",
+    "ink-text-input": "^6.0.0",
     "react": "^19.2.4"
   },
   "devDependencies": {
@@ -21,6 +24,7 @@
     "@types/react": "^19.2.13",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
   }
 }
