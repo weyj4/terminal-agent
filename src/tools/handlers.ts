@@ -128,7 +128,7 @@ export const findFilesHandler: ToolHandler = async (input) => {
 
   try {
     const result = await runShell(
-      `find ${searchPath} -name '${pattern}' -not -path '*/node_modules/*' -not -path '*/.git/*' | head -1000`,
+      `fd --glob --color=never --hidden --max-results 1000 '${pattern}' '${searchPath}'`,
       { timeout: 10000 }
     );
 
