@@ -1,6 +1,6 @@
 import { Box, Text, useInput, useApp } from 'ink';
 import TextInput from 'ink-text-input';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Agent as ClaudeAgent } from './agent/claude-agent.js';
 import { Agent as OpenAIAgent } from './agent/openai-agent.js';
 
@@ -10,6 +10,21 @@ type Message = {
   role: 'user' | 'assistant';
   content: string;
 };
+
+const spinnerFrames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+
+function Spinner({ label = 'Thinking...' }: { label?: string }) {
+  const [frame, setFrame] = useState(0);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setFrame(prev => (prev + 1) % spinnerFrames.length);
+    }, 80);
+    return () => clearInterval(timer);
+  }, []);
+
+  return <Text dimColor>{spinnerFrames[frame]} {label}</Text>;
+}
 
 function createAgent(provider: Provider) {
   return provider === 'openai' ? new OpenAIAgent() : new ClaudeAgent();
@@ -87,7 +102,7 @@ export function App({ provider = 'anthropic' }: { provider?: Provider }) {
       <Box>
         <Text color="blue" bold>You: </Text>
         {isProcessing ? (
-          <Text dimColor>Processing...</Text>
+          <Spinner />
         ) : (
           <TextInput
             value={input}
