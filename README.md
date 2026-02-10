@@ -44,12 +44,14 @@ src/
 ```
 
 ## TODO
-- Choose LLM
+- implement Skills
+- BOM/CRLF normalization for editFile
+- fuzzy search, diffs for editFile
+- truncate tool output (so we don't blow context)
+- "spinners" for "thinking"
+- Choose model
 - Streaming responses
-- Don't redraw unless necessary
-- Keep core loop simple
-- Prompt caching (more breakpoints?)
-- Diff-based file editing (currently it's old-test -> new-text)
+- Prompt caching
 - Visibility into cost
 
 ## Stack
