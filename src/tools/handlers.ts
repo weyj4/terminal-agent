@@ -1,9 +1,6 @@
-import { readFile as fsReadFile, writeFile as fsWriteFile, mkdir } from 'fs/promises';
-import { dirname, resolve } from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
-
-const execAsync = promisify(exec);
+import { readFile as fsReadFile, writeFile as fsWriteFile, mkdir, readdir, stat } from 'fs/promises';
+import { dirname, resolve, join } from 'path';
+import { spawn } from 'child_process';
 
 export type ToolHandler = (
 	input: Record<string, string>,
@@ -88,48 +85,155 @@ export const editFileHandler: ToolHandler = async (input) => {
   }
 };
 
+export const lsHandler: ToolHandler = async (input) => {
+  const dirPath = resolve(process.cwd(), input.path || '.');
+
+  try {
+    const dirStat = await stat(dirPath);
+    if (!dirStat.isDirectory()) {
+      return `Error: Not a directory: '${dirPath}'`;
+    }
+
+    const entries = await readdir(dirPath);
+    entries.sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+
+    const results: string[] = [];
+    for (const entry of entries) {
+      try {
+        const entryStat = await stat(join(dirPath, entry));
+        results.push(entryStat.isDirectory() ? entry + '/' : entry);
+      } catch {
+        results.push(entry);
+      }
+    }
+
+    return results.length === 0 ? '(empty directory)' : results.join('\n');
+  } catch (error) {
+    if (error instanceof Error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return `Error: Path '${dirPath}' not found`;
+      }
+      if ((error as NodeJS.ErrnoException).code === 'EACCES') {
+        return `Error: Permission denied for '${dirPath}'`;
+      }
+      return `Error: ${error.message}`;
+    }
+    return `Error: Unknown error listing directory: '${dirPath}'`;
+  }
+};
+
+export const findFilesHandler: ToolHandler = async (input) => {
+  const searchPath = resolve(process.cwd(), input.path || '.');
+  const pattern = input.pattern;
+
+  try {
+    const result = await runShell(
+      `find ${searchPath} -name '${pattern}' -not -path '*/node_modules/*' -not -path '*/.git/*' | head -1000`,
+      { timeout: 10000 }
+    );
+
+    const lines = result.output.trim();
+    if (!lines) return 'No files found matching pattern';
+
+    const results = lines.split('\n').map(p =>
+      p.startsWith(searchPath + '/') ? p.slice(searchPath.length + 1) : p
+    );
+
+    return results.join('\n');
+  } catch (error) {
+    if (error instanceof Error) {
+      return `Error: ${error.message}`;
+    }
+    return `Error: Unknown error searching for files`;
+  }
+};
+
+const MAX_OUTPUT_BYTES = 100 * 1024;
+const DEFAULT_TIMEOUT = 30000;
+
+function runShell(
+  command: string,
+  options: { timeout?: number; cwd?: string } = {}
+): Promise<{ output: string; exitCode: number }> {
+  const { timeout = DEFAULT_TIMEOUT, cwd } = options;
+
+  return new Promise((resolve, reject) => {
+    const proc = spawn('bash', ['-c', command], {
+      cwd: cwd || process.cwd(),
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: true,
+    });
+
+    let stdout = '';
+    let stderr = '';
+    let timedOut = false;
+
+    const timer = setTimeout(() => {
+      timedOut = true;
+      if (proc.pid) {
+        try { process.kill(-proc.pid, 'SIGKILL'); } catch {}
+      }
+    }, timeout);
+
+    proc.stdout?.on('data', (data: Buffer) => {
+      if (stdout.length < MAX_OUTPUT_BYTES) {
+        stdout += data.toString();
+      }
+    });
+
+    proc.stderr?.on('data', (data: Buffer) => {
+      if (stderr.length < MAX_OUTPUT_BYTES) {
+        stderr += data.toString();
+      }
+    });
+
+    proc.on('error', (err) => {
+      clearTimeout(timer);
+      reject(err);
+    });
+
+    proc.on('close', (code) => {
+      clearTimeout(timer);
+
+      if (timedOut) {
+        let output = '';
+        if (stdout) output += stdout;
+        if (stderr) output += stderr;
+        resolve({
+          output: output + `\n[Timed out after ${timeout / 1000}s]`,
+          exitCode: 1,
+        });
+        return;
+      }
+
+      let output = '';
+      if (stdout) output += stdout;
+      if (stderr) output += stderr;
+
+      resolve({ output, exitCode: code ?? 0 });
+    });
+  });
+}
+
 export const runCommandHandler: ToolHandler = async (input) => {
   const command = input.command;
 
-  console.log(`\x1b[92m[Executing Bash]\x1b[0m: ${command}`);
-
   try {
-    const { stdout, stderr } = await execAsync(command, {
-      timeout: 30000,
-      maxBuffer: 10 * 1024 * 1024
-    });
+    const { output, exitCode } = await runShell(command);
 
-    let output = '';
-    if (stdout) {
-      output += `STDOUT: \n${stdout}\n`;
-    }
-    if (stderr) {
-      output += `STDERR: \n${stderr}\n`
+    if (!output.trim()) {
+      return exitCode === 0
+        ? 'Command executed successfully (no output).'
+        : `Command failed with exit code ${exitCode} (no output).`;
     }
 
-    if (!output) {
-      return `Command executed successfully (no output).`;
+    if (exitCode !== 0) {
+      return `${output}\n[Exit code: ${exitCode}]`;
     }
 
     return output;
   } catch (error) {
     if (error instanceof Error) {
-      if ((error as any).killed) {
-        return 'Error: The command timed out.';
-      }
-
-      const execError = error as any;
-      let output = '';
-      if (execError.stdout) {
-        output += `STDOUT:\n${execError.stdout}\n`;
-      }
-      if (execError.stderr) {
-        output += `STDERR:\n${execError.stderr}\n`;
-      }
-      if (output) {
-        return output;
-      }
-
       return `Error: ${error.message}`;
     }
     return 'Error: Unknown error executing command';

@@ -1,5 +1,5 @@
 import type OpenAI from "openai";
-import { type ToolHandler, readFileHandler, writeFileHandler, editFileHandler, runCommandHandler } from '../tools/handlers.js';
+import { type ToolHandler, readFileHandler, writeFileHandler, editFileHandler, lsHandler, findFilesHandler, runCommandHandler } from '../tools/handlers.js';
 
 type FunctionTool = Extract<OpenAI.Responses.Tool, { type: 'function' }>;
 
@@ -77,6 +77,48 @@ export const tools: ToolDefinition[] = [
       strict: false
     },
     handler: editFileHandler
+  },
+  {
+    spec: {
+      type: "function",
+      name: "ls",
+      description: "List directory contents. Returns entries sorted alphabetically with '/' suffix for directories.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "Directory to list (default: current directory)"
+          }
+        },
+        required: []
+      },
+      strict: false
+    },
+    handler: lsHandler
+  },
+  {
+    spec: {
+      type: "function",
+      name: "find_files",
+      description: "Search for files by glob pattern. Returns matching file paths relative to the search directory. Excludes node_modules and .git.",
+      parameters: {
+        type: "object",
+        properties: {
+          pattern: {
+            type: "string",
+            description: "Glob pattern to match files, e.g. '*.ts', '*.json'"
+          },
+          path: {
+            type: "string",
+            description: "Directory to search in (default: current directory)"
+          }
+        },
+        required: ["pattern"]
+      },
+      strict: false
+    },
+    handler: findFilesHandler
   },
   {
     spec: {
