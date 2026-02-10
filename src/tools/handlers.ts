@@ -215,6 +215,57 @@ function runShell(
   });
 }
 
+let hasRipgrep: boolean | null = null;
+
+async function checkRipgrep(): Promise<boolean> {
+  if (hasRipgrep !== null) return hasRipgrep;
+  try {
+    const { exitCode } = await runShell('rg --version', { timeout: 5000 });
+    hasRipgrep = exitCode === 0;
+  } catch {
+    hasRipgrep = false;
+  }
+  return hasRipgrep;
+}
+
+export const grepHandler: ToolHandler = async (input) => {
+  const pattern = input.pattern;
+  const searchPath = resolve(process.cwd(), input.path || '.');
+  const includeFlag = input.include || '';
+
+  try {
+    let command: string;
+
+    if (await checkRipgrep()) {
+      command = `rg --color=never --line-number --max-count=100`;
+      if (includeFlag) command += ` --glob '${includeFlag}'`;
+      command += ` -- '${pattern.replace(/'/g, "'\\''")}' '${searchPath}'`;
+    } else {
+      command = `grep -rn --max-count=100`;
+      if (includeFlag) command += ` --include='${includeFlag}'`;
+      command += ` -- '${pattern.replace(/'/g, "'\\''")}' '${searchPath}'`;
+    }
+
+    const { output, exitCode } = await runShell(command, { timeout: 15000 });
+
+    if (exitCode === 1 || !output.trim()) {
+      return 'No matches found';
+    }
+
+    const lines = output.trim().split('\n');
+    const results = lines.map(line =>
+      line.startsWith(searchPath + '/') ? line.slice(searchPath.length + 1) : line
+    );
+
+    return results.join('\n');
+  } catch (error) {
+    if (error instanceof Error) {
+      return `Error: ${error.message}`;
+    }
+    return 'Error: Unknown error running grep';
+  }
+};
+
 export const runCommandHandler: ToolHandler = async (input) => {
   const command = input.command;
 

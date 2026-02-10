@@ -1,5 +1,5 @@
 import type OpenAI from "openai";
-import { type ToolHandler, readFileHandler, writeFileHandler, editFileHandler, lsHandler, findFilesHandler, runCommandHandler } from '../tools/handlers.js';
+import { type ToolHandler, readFileHandler, writeFileHandler, editFileHandler, lsHandler, findFilesHandler, grepHandler, runCommandHandler } from '../tools/handlers.js';
 
 type FunctionTool = Extract<OpenAI.Responses.Tool, { type: 'function' }>;
 
@@ -119,6 +119,33 @@ export const tools: ToolDefinition[] = [
       strict: false
     },
     handler: findFilesHandler
+  },
+  {
+    spec: {
+      type: "function",
+      name: "grep",
+      description: "Search file contents for a pattern using ripgrep (rg) if available, otherwise grep. Returns matching lines with file paths and line numbers.",
+      parameters: {
+        type: "object",
+        properties: {
+          pattern: {
+            type: "string",
+            description: "The regex pattern to search for"
+          },
+          path: {
+            type: "string",
+            description: "Directory or file to search in (default: current directory)"
+          },
+          include: {
+            type: "string",
+            description: "File glob to filter, e.g. '*.ts' or '*.py'"
+          }
+        },
+        required: ["pattern"]
+      },
+      strict: false
+    },
+    handler: grepHandler
   },
   {
     spec: {

@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { type ToolHandler, readFileHandler, writeFileHandler, editFileHandler, lsHandler, findFilesHandler, runCommandHandler } from '../tools/handlers.js';
+import { type ToolHandler, readFileHandler, writeFileHandler, editFileHandler, lsHandler, findFilesHandler, grepHandler, runCommandHandler } from '../tools/handlers.js';
 
 export type ToolDefinition = {
 	spec: Anthropic.Messages.Tool;
@@ -107,6 +107,31 @@ export const tools: ToolDefinition[] = [
       }
     },
     handler: findFilesHandler
+  },
+  {
+    spec: {
+      name: "grep",
+      description: "Search file contents for a pattern using ripgrep (rg) if available, otherwise grep. Returns matching lines with file paths and line numbers.",
+      input_schema: {
+        type: "object",
+        properties: {
+          pattern: {
+            type: "string",
+            description: "The regex pattern to search for"
+          },
+          path: {
+            type: "string",
+            description: "Directory or file to search in (default: current directory)"
+          },
+          include: {
+            type: "string",
+            description: "File glob to filter, e.g. '*.ts' or '*.py'"
+          }
+        },
+        required: ["pattern"]
+      }
+    },
+    handler: grepHandler
   },
   {
     spec: {
