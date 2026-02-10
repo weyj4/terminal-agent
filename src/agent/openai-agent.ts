@@ -84,8 +84,7 @@ export class Agent {
   private async runInference() {
     // TODO do we need await?
     return this.client.responses.create({
-      // TODO what model
-      model: 'gpt-4o-mini',
+      model: 'gpt-5.3-codex',
       instructions: this.systemPrompt,
       input: [
         ...this.conversation

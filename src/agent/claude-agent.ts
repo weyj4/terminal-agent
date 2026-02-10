@@ -80,7 +80,7 @@ export class Agent {
 
   private async runInference() {
     return await this.client.messages.create({
-      model: 'claude-sonnet-4-5-20250929',
+      model: 'claude-opus-4-6-20250527',
       max_tokens: 1024,
       system: [
         {
