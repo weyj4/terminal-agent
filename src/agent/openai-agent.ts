@@ -25,6 +25,11 @@ export class Agent {
 
     while (true) {
       const response = await this.runInference();
+
+      if (response.usage) {
+        this.onUsage?.(response.usage.input_tokens, response.usage.output_tokens);
+      }
+
       this.conversation.push(...response.output);
 
       // TODO check typing
@@ -94,4 +99,5 @@ export class Agent {
   onAssistantText?: (text: string) => void;
   onToolUse?: (name: string, input: unknown) => void;
   onToolResult?: (name: string, result: string) => void;
+  onUsage?: (inputTokens: number, outputTokens: number) => void;
 }

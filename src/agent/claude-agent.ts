@@ -24,6 +24,8 @@ export class Agent {
     while (true) {
       const message = await this.runInference();
 
+      this.onUsage?.(message.usage.input_tokens, message.usage.output_tokens);
+
       this.conversation.push({
         role: 'assistant',
         content: message.content
@@ -95,4 +97,5 @@ export class Agent {
   onAssistantText?: (text: string) => void;
   onToolUse?: (name: string, input: unknown) => void;
   onToolResult?: (name: string, result: string) => void;
+  onUsage?: (inputTokens: number, outputTokens: number) => void;
 }
