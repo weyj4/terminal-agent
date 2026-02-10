@@ -1,4 +1,5 @@
-import { readFile as fsReadFile } from 'fs/promises';
+import { readFile as fsReadFile, writeFile as fsWriteFile, mkdir } from 'fs/promises';
+import { dirname, resolve } from 'path';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 
@@ -9,7 +10,7 @@ export type ToolHandler = (
 ) => Promise<string>;
 
 export const readFileHandler: ToolHandler = async (input) => {
-  const path = input.path;
+  const path = resolve(process.cwd(), input.path);
 
   try {
     const content = await fsReadFile(path, 'utf-8');
@@ -25,6 +26,65 @@ export const readFileHandler: ToolHandler = async (input) => {
       return `Error: ${error.message}`;
     }
     return `Error: Unknown error reading file: '${path}'`
+  }
+};
+
+export const writeFileHandler: ToolHandler = async (input) => {
+  const path = resolve(process.cwd(), input.path);
+  const content = input.content;
+
+  try {
+    const dir = dirname(path);
+    await mkdir(dir, { recursive: true });
+    await fsWriteFile(path, content);
+    return `Successfully wrote ${content.length} bytes to ${path}`;
+  } catch (error) {
+    if (error instanceof Error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return `Error: File '${path}' not found`;
+      }
+      if ((error as NodeJS.ErrnoException).code === 'EACCES') {
+        return `Error: Permission denied for '${path}'`;
+      }
+      return `Error: ${error.message}`;
+    }
+    return `Error: Unknown error writing file: '${path}'`
+
+  }
+};
+
+export const editFileHandler: ToolHandler = async (input) => {
+  const path = resolve(process.cwd(), input.path);
+  const { oldText, newText } = input;
+
+  try {
+    const content = await fsReadFile(path, 'utf-8');
+
+    const matchIndex = content.indexOf(oldText);
+    if (matchIndex === -1) {
+      return `Error: Could not find the specified text in '${path}'`;
+    }
+
+    const secondMatch = content.indexOf(oldText, matchIndex + 1);
+    if (secondMatch !== -1) {
+      return `Error: Found multiple matches for the specified text in '${path}'. Provide more context to make the match unique.`;
+    }
+
+    const updated = content.substring(0, matchIndex) + newText + content.substring(matchIndex + oldText.length);
+    await fsWriteFile(path, updated);
+
+    return `Successfully edited ${path}`;
+  } catch (error) {
+    if (error instanceof Error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+        return `Error: File '${path}' not found`;
+      }
+      if ((error as NodeJS.ErrnoException).code === 'EACCES') {
+        return `Error: Permission denied for '${path}'`;
+      }
+      return `Error: ${error.message}`;
+    }
+    return `Error: Unknown error editing file: '${path}'`;
   }
 };
 

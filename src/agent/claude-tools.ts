@@ -1,5 +1,5 @@
 import type Anthropic from "@anthropic-ai/sdk";
-import { type ToolHandler, readFileHandler, runCommandHandler } from '../tools/handlers.js';
+import { type ToolHandler, readFileHandler, writeFileHandler, editFileHandler, runCommandHandler } from '../tools/handlers.js';
 
 export type ToolDefinition = {
 	spec: Anthropic.Messages.Tool;
@@ -23,6 +23,52 @@ export const tools: ToolDefinition[] = [
       }
     },
     handler: readFileHandler
+  },
+  {
+    spec: {
+      name: "write_file",
+      description: "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+      input_schema: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "The file path to write to"
+          },
+          content: {
+            type: "string",
+            description: "The content to write to the file"
+          }
+        },
+        required: ["path", "content"]
+      }
+    },
+    handler: writeFileHandler
+  },
+  {
+    spec: {
+      name: "edit_file",
+      description: "Edit an existing file by replacing a specific section of text. The old text must match exactly and be unique within the file.",
+      input_schema: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "The file path to edit"
+          },
+          oldText: {
+            type: "string",
+            description: "The existing text to find and replace. Must match exactly and be unique in the file."
+          },
+          newText: {
+            type: "string",
+            description: "The new text to replace the old text with"
+          }
+        },
+        required: ["path", "oldText", "newText"]
+      }
+    },
+    handler: editFileHandler
   },
   {
     spec: {

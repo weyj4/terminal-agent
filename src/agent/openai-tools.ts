@@ -1,5 +1,5 @@
 import type OpenAI from "openai";
-import { type ToolHandler, readFileHandler, runCommandHandler } from '../tools/handlers.js';
+import { type ToolHandler, readFileHandler, writeFileHandler, editFileHandler, runCommandHandler } from '../tools/handlers.js';
 
 type FunctionTool = Extract<OpenAI.Responses.Tool, { type: 'function' }>;
 
@@ -27,6 +27,56 @@ export const tools: ToolDefinition[] = [
       strict: false
     },
     handler: readFileHandler
+  },
+  {
+    spec: {
+      type: "function",
+      name: "write_file",
+      description: "Write content to a file. Creates the file if it doesn't exist, overwrites if it does. Automatically creates parent directories.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "The file path to write to"
+          },
+          content: {
+            type: "string",
+            description: "The content to write to the file"
+          }
+        },
+        required: ["path", "content"]
+      },
+      strict: false
+    },
+    handler: writeFileHandler
+  },
+  {
+    spec: {
+      type: "function",
+      name: "edit_file",
+      description: "Edit an existing file by replacing a specific section of text. The old text must match exactly and be unique within the file.",
+      parameters: {
+        type: "object",
+        properties: {
+          path: {
+            type: "string",
+            description: "The file path to edit"
+          },
+          oldText: {
+            type: "string",
+            description: "The existing text to find and replace. Must match exactly and be unique in the file."
+          },
+          newText: {
+            type: "string",
+            description: "The new text to replace the old text with"
+          }
+        },
+        required: ["path", "oldText", "newText"]
+      },
+      strict: false
+    },
+    handler: editFileHandler
   },
   {
     spec: {
