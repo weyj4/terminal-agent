@@ -147,15 +147,17 @@ export function run(provider: Provider = 'anthropic') {
     }
   };
 
-  editor.handleInput = ((originalHandleInput) => {
-    return (data: string) => {
-      if (data === '\x03') {
-        tui.stop();
-        process.exit(0);
-      }
-      originalHandleInput.call(editor, data);
-    };
-  })(editor.handleInput!);
+  process.on('SIGINT', () => {
+    tui.stop();
+    process.exit(0);
+  });
+
+  process.stdin.on('data', (data: Buffer) => {
+    if (data[0] === 0x03) {
+      tui.stop();
+      process.exit(0);
+    }
+  });
 
   tui.start();
 }
