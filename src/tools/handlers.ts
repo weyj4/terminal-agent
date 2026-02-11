@@ -6,6 +6,8 @@ export type ToolHandler = (
 	input: Record<string, string>,
 ) => Promise<string>;
 
+export const destructiveTools = new Set(['write_file', 'edit_file', 'run_command']);
+
 export const readFileHandler: ToolHandler = async (input) => {
   const path = resolve(process.cwd(), input.path);
 

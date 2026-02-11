@@ -1,6 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { toolSpecs, getToolHandler } from './claude-tools.js';
 import { systemPrompt } from '../prompts/index.js'
+import { truncateToolResult } from '../utils/truncate.js';
+import { destructiveTools } from '../tools/handlers.js';
 
 type Message = Anthropic.MessageParam;
 type InferenceFn = () => Promise<Anthropic.Message>;
@@ -67,13 +69,25 @@ export class Agent {
           continue;
         }
 
+        if (destructiveTools.has(toolUse.name) && this.onConfirm) {
+          const allowed = await this.onConfirm(toolUse.name, toolUse.input);
+          if (!allowed) {
+            toolResults.push({
+              type: 'tool_result',
+              tool_use_id: toolUse.id,
+              content: 'Tool execution denied by user.'
+            });
+            continue;
+          }
+        }
+
         const result = await handler(toolUse.input as Record<string, string>);
         this.onToolResult?.(toolUse.name, result);
 
         toolResults.push({
           type: 'tool_result',
           tool_use_id: toolUse.id,
-          content: result
+          content: truncateToolResult(result)
         });
       }
 
@@ -90,8 +104,8 @@ export class Agent {
     }
 
     const stream = this.client!.messages.stream({
-      model: 'claude-opus-4-6-20250527',
-      max_tokens: 1024,
+      model: 'claude-opus-4-6',
+      max_tokens: 8192,
       system: [
         {
           type: 'text',
@@ -113,4 +127,5 @@ export class Agent {
   onToolUse?: (name: string, input: unknown) => void;
   onToolResult?: (name: string, result: string) => void;
   onUsage?: (inputTokens: number, outputTokens: number) => void;
+  onConfirm?: (toolName: string, input: unknown) => Promise<boolean>;
 }

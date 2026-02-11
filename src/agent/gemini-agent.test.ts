@@ -1,95 +1,70 @@
 import { describe, it, expect, vi } from 'vitest';
-import type OpenAI from 'openai';
-import { Agent } from './openai-agent.js';
+import type { GenerateContentResponse } from '@google/genai';
+import { Agent } from './gemini-agent.js';
 
-type Response = OpenAI.Responses.Response;
-
-function textResponse(text: string): Response {
+function textResponse(text: string): GenerateContentResponse {
   return {
-    id: 'resp_test',
-    object: 'response',
-    created_at: Date.now(),
-    status: 'completed',
-    model: 'gpt-5.3-codex',
-    output: [
-      {
-        type: 'message',
-        id: 'msg_test',
-        role: 'assistant',
-        status: 'completed',
-        content: [{ type: 'output_text', text, annotations: [] }],
+    candidates: [{
+      content: {
+        role: 'model',
+        parts: [{ text }],
       },
-    ],
-    usage: {
-      input_tokens: 10,
-      output_tokens: 5,
-      total_tokens: 15,
-      input_tokens_details: { cached_tokens: 0 },
-      output_tokens_details: { reasoning_tokens: 0 },
+    }],
+    usageMetadata: {
+      promptTokenCount: 10,
+      candidatesTokenCount: 5,
+      totalTokenCount: 15,
     },
-    tool_choice: 'auto',
-    tools: [],
-    text: { format: { type: 'text' } },
-    parallel_tool_calls: true,
-    temperature: 1,
-    top_p: 1,
-    max_output_tokens: 1024,
-    truncation: 'disabled',
-    error: null,
-    incomplete_details: null,
-    instructions: null,
-    metadata: {},
-    reasoning: null,
-    user: undefined,
-  } as unknown as Response;
+  } as unknown as GenerateContentResponse;
 }
 
 function toolCallResponse(
   toolName: string,
   args: Record<string, string>,
   callId = 'call_test'
-): Response {
+): GenerateContentResponse {
   return {
-    id: 'resp_test',
-    object: 'response',
-    created_at: Date.now(),
-    status: 'completed',
-    model: 'gpt-5.3-codex',
-    output: [
-      {
-        type: 'function_call',
-        id: 'fc_test',
-        call_id: callId,
-        name: toolName,
-        arguments: JSON.stringify(args),
-        status: 'completed',
+    candidates: [{
+      content: {
+        role: 'model',
+        parts: [{
+          functionCall: { name: toolName, args, id: callId },
+        }],
       },
-    ],
-    usage: {
-      input_tokens: 15,
-      output_tokens: 10,
-      total_tokens: 25,
-      input_tokens_details: { cached_tokens: 0 },
-      output_tokens_details: { reasoning_tokens: 0 },
+    }],
+    usageMetadata: {
+      promptTokenCount: 15,
+      candidatesTokenCount: 10,
+      totalTokenCount: 25,
     },
-    tool_choice: 'auto',
-    tools: [],
-    text: { format: { type: 'text' } },
-    parallel_tool_calls: true,
-    temperature: 1,
-    top_p: 1,
-    max_output_tokens: 1024,
-    truncation: 'disabled',
-    error: null,
-    incomplete_details: null,
-    instructions: null,
-    metadata: {},
-    reasoning: null,
-    user: undefined,
-  } as unknown as Response;
+  } as unknown as GenerateContentResponse;
 }
 
-describe('OpenAI Agent loop', () => {
+function textAndToolResponse(
+  text: string,
+  toolName: string,
+  args: Record<string, string>,
+  callId = 'call_test'
+): GenerateContentResponse {
+  return {
+    candidates: [{
+      content: {
+        role: 'model',
+        parts: [
+          { text },
+          { functionCall: { name: toolName, args, id: callId } },
+        ],
+      },
+    }],
+    usageMetadata: {
+      promptTokenCount: 15,
+      candidatesTokenCount: 10,
+      totalTokenCount: 25,
+    },
+  } as unknown as GenerateContentResponse;
+}
+
+describe('Gemini Agent loop', () => {
   it('should handle a simple text response', async () => {
     const texts: string[] = [];
 
@@ -137,9 +112,9 @@ describe('OpenAI Agent loop', () => {
     await agent.sendMessage('Run echo hello');
 
     expect(mockInference).toHaveBeenCalledTimes(2);
-    expect(toolUses).toHaveLength(1);
-    expect(toolUses[0].name).toBe('run_command');
+    expect(toolUses).toEqual([{ name: 'run_command', input: { command: 'echo hello' } }]);
     expect(toolResults).toHaveLength(1);
+    expect(toolResults[0].name).toBe('run_command');
     expect(toolResults[0].result).toContain('hello');
     expect(texts).toEqual(['The command output was hello.']);
   });
@@ -208,6 +183,32 @@ describe('OpenAI Agent loop', () => {
     expect(usages[1]).toEqual({ input: 10, output: 5 });
   });
 
+  it('should handle text + function call in the same response', async () => {
+    const texts: string[] = [];
+    const toolUses: string[] = [];
+
+    const mockInference = vi.fn()
+      .mockResolvedValueOnce(
+        textAndToolResponse(
+          'Let me check that for you.',
+          'run_command',
+          { command: 'echo checking' }
+        )
+      )
+      .mockResolvedValueOnce(
+        textResponse('All done.')
+      );
+
+    const agent = new Agent({ runInference: mockInference });
+    agent.onAssistantText = (t) => texts.push(t);
+    agent.onToolUse = (n) => toolUses.push(n);
+
+    await agent.sendMessage('Check something');
+
+    expect(texts).toEqual(['Let me check that for you.', 'All done.']);
+    expect(toolUses).toEqual(['run_command']);
+  });
+
   it('should propagate inference errors', async () => {
     const agent = new Agent({
       runInference: vi.fn().mockRejectedValueOnce(new Error('API rate limit')),
@@ -235,7 +236,7 @@ describe('OpenAI Agent loop', () => {
 
     await agent.sendMessage('Delete everything');
 
-    expect(agent.onConfirm).toHaveBeenCalledWith('run_command', JSON.stringify({ command: 'rm -rf /' }));
+    expect(agent.onConfirm).toHaveBeenCalledWith('run_command', { command: 'rm -rf /' });
     expect(toolResults).toHaveLength(0);
     expect(texts).toEqual(['Operation was denied.']);
   });

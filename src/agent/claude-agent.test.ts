@@ -208,6 +208,69 @@ describe('Claude Agent loop', () => {
     await expect(agent.sendMessage('test')).rejects.toThrow('API rate limit');
   });
 
+  it('should deny tool execution when onConfirm returns false', async () => {
+    const texts: string[] = [];
+    const toolResults: { name: string; result: string }[] = [];
+
+    const mockInference = vi.fn()
+      .mockResolvedValueOnce(
+        toolUseResponse('run_command', { command: 'rm -rf /' })
+      )
+      .mockResolvedValueOnce(
+        textResponse('Operation was denied.')
+      );
+
+    const agent = new Agent({ runInference: mockInference });
+    agent.onAssistantText = (t) => texts.push(t);
+    agent.onToolResult = (n, r) => toolResults.push({ name: n, result: r });
+    agent.onConfirm = vi.fn().mockResolvedValue(false);
+
+    await agent.sendMessage('Delete everything');
+
+    expect(agent.onConfirm).toHaveBeenCalledWith('run_command', { command: 'rm -rf /' });
+    expect(toolResults).toHaveLength(0);
+    expect(texts).toEqual(['Operation was denied.']);
+  });
+
+  it('should allow tool execution when onConfirm returns true', async () => {
+    const toolResults: { name: string; result: string }[] = [];
+
+    const mockInference = vi.fn()
+      .mockResolvedValueOnce(
+        toolUseResponse('run_command', { command: 'echo hello' })
+      )
+      .mockResolvedValueOnce(
+        textResponse('Done.')
+      );
+
+    const agent = new Agent({ runInference: mockInference });
+    agent.onToolResult = (n, r) => toolResults.push({ name: n, result: r });
+    agent.onConfirm = vi.fn().mockResolvedValue(true);
+
+    await agent.sendMessage('Run echo');
+
+    expect(agent.onConfirm).toHaveBeenCalled();
+    expect(toolResults).toHaveLength(1);
+    expect(toolResults[0].result).toContain('hello');
+  });
+
+  it('should not prompt for non-destructive tools', async () => {
+    const mockInference = vi.fn()
+      .mockResolvedValueOnce(
+        toolUseResponse('grep', { pattern: 'hello' })
+      )
+      .mockResolvedValueOnce(
+        textResponse('No matches.')
+      );
+
+    const agent = new Agent({ runInference: mockInference });
+    agent.onConfirm = vi.fn().mockResolvedValue(true);
+
+    await agent.sendMessage('Search for hello');
+
+    expect(agent.onConfirm).not.toHaveBeenCalled();
+  });
+
   it('should maintain conversation across multiple sendMessage calls', async () => {
     let callCount = 0;
     const mockInference = vi.fn().mockImplementation(() => {

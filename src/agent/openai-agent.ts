@@ -1,6 +1,8 @@
 import OpenAI from 'openai';
 import { toolSpecs, getToolHandler } from './openai-tools.js';
 import { systemPrompt } from '../prompts/index.js'
+import { truncateToolResult } from '../utils/truncate.js';
+import { destructiveTools } from '../tools/handlers.js';
 
 type InputItem = OpenAI.Responses.ResponseInputItem;
 type OutputItem = OpenAI.Responses.ResponseOutputItem;
@@ -58,6 +60,18 @@ export class Agent {
       for (const call of toolCalls) {
         this.onToolUse?.(call.name, call.arguments);
 
+        if (destructiveTools.has(call.name) && this.onConfirm) {
+          const allowed = await this.onConfirm(call.name, call.arguments);
+          if (!allowed) {
+            toolOutputs.push({
+              type: 'function_call_output',
+              call_id: call.call_id,
+              output: 'Tool execution denied by user.'
+            });
+            continue;
+          }
+        }
+
         const handler = getToolHandler(call.name);
 
         if (!handler) {
@@ -76,7 +90,7 @@ export class Agent {
         toolOutputs.push({
           type: 'function_call_output',
           call_id: call.call_id,
-          output: result
+          output: truncateToolResult(result)
         });
       }
       this.conversation.push(...toolOutputs);
@@ -93,7 +107,7 @@ export class Agent {
       instructions: this.systemPrompt,
       input: [...this.conversation],
       tools: toolSpecs,
-      max_output_tokens: 1024,
+      max_output_tokens: 8192,
       stream: true,
     });
 
@@ -119,4 +133,5 @@ export class Agent {
   onToolUse?: (name: string, input: unknown) => void;
   onToolResult?: (name: string, result: string) => void;
   onUsage?: (inputTokens: number, outputTokens: number) => void;
+  onConfirm?: (toolName: string, input: unknown) => Promise<boolean>;
 }

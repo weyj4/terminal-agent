@@ -5,11 +5,14 @@ import chalk from 'chalk';
 import { execSync } from 'child_process';
 import { Agent as ClaudeAgent } from './agent/claude-agent.js';
 import { Agent as OpenAIAgent } from './agent/openai-agent.js';
+import { Agent as GeminiAgent } from './agent/gemini-agent.js';
 
-type Provider = 'anthropic' | 'openai';
+type Provider = 'anthropic' | 'openai' | 'gemini';
 
 function createAgent(provider: Provider) {
-  return provider === 'openai' ? new OpenAIAgent() : new ClaudeAgent();
+  if (provider === 'openai') return new OpenAIAgent();
+  if (provider === 'gemini') return new GeminiAgent();
+  return new ClaudeAgent();
 }
 
 function getPathInfo(): string {
@@ -33,11 +36,13 @@ function formatTokens(tokens: number): string {
 const COST_PER_INPUT_TOKEN: Record<Provider, number> = {
   anthropic: 3 / 1_000_000,
   openai: 0.15 / 1_000_000,
+  gemini: 0.15 / 1_000_000,
 };
 
 const COST_PER_OUTPUT_TOKEN: Record<Provider, number> = {
   anthropic: 15 / 1_000_000,
   openai: 0.6 / 1_000_000,
+  gemini: 0.6 / 1_000_000,
 };
 
 const markdownTheme: MarkdownTheme = {
@@ -211,10 +216,44 @@ export function run(provider: Provider = 'anthropic') {
   agent.onToolUse = (name, input) => {
     const summary = typeof input === 'object' ? JSON.stringify(input).substring(0, 80) : String(input);
     addToolInfo(name, summary);
+    showLoader();
   };
 
   agent.onToolResult = (name, result) => {
     addToolInfo(name, `→ ${result.substring(0, 80)}`);
+  };
+
+  agent.onConfirm = (toolName, input) => {
+    hideLoader();
+    const summary = typeof input === 'object' ? JSON.stringify(input).substring(0, 80) : String(input);
+    chatContainer.addChild(
+      new Text(chalk.yellow(`  Allow ${toolName}? `) + chalk.dim(summary), 1, 0)
+    );
+    chatContainer.addChild(
+      new Text(chalk.yellow('  Press y to allow, n to deny'), 1, 0)
+    );
+    tui.requestRender();
+
+    return new Promise<boolean>((resolve) => {
+      const prev = editor.handleInput.bind(editor);
+      editor.handleInput = (data: string) => {
+        if (matchesKey(data, 'ctrl+c')) {
+          tui.stop();
+          process.exit(0);
+        }
+        if (data === 'y' || data === 'Y') {
+          chatContainer.addChild(new Text(chalk.green('  ✓ Allowed'), 1, 0));
+          tui.requestRender();
+          editor.handleInput = prev;
+          resolve(true);
+        } else if (data === 'n' || data === 'N') {
+          chatContainer.addChild(new Text(chalk.red('  ✗ Denied'), 1, 0));
+          tui.requestRender();
+          editor.handleInput = prev;
+          resolve(false);
+        }
+      };
+    });
   };
 
   agent.onUsage = (inputTokens, outputTokens) => {
