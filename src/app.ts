@@ -101,6 +101,9 @@ export function run(provider: Provider = 'anthropic') {
   let totalInputTokens = 0;
   let totalOutputTokens = 0;
 
+  let streamingMarkdown: InstanceType<typeof Markdown> | null = null;
+  let streamingText = '';
+
   function updateStatusBar() {
     const total = totalInputTokens + totalOutputTokens;
     if (total === 0) {
@@ -132,13 +135,40 @@ export function run(provider: Provider = 'anthropic') {
     tui.requestRender();
   }
 
-  function addAssistantMessage(text: string) {
+  function beginAssistantStream() {
     chatContainer.addChild(
       new Text(chalk.yellow.bold('Assistant: '), 1, 0)
     );
-    chatContainer.addChild(new Markdown(text.trim(), 1, 0, markdownTheme));
+    streamingMarkdown = new Markdown('', 1, 0, markdownTheme);
+    chatContainer.addChild(streamingMarkdown);
     chatContainer.addChild(new Spacer(1));
+    streamingText = '';
+  }
+
+  function appendAssistantDelta(delta: string) {
+    if (!streamingMarkdown) {
+      beginAssistantStream();
+    }
+    hideLoader();
+    streamingText += delta;
+    streamingMarkdown!.setText(streamingText);
     tui.requestRender();
+  }
+
+  function finalizeAssistantMessage(text: string) {
+    if (streamingMarkdown) {
+      streamingMarkdown.setText(text.trim());
+      streamingMarkdown = null;
+      streamingText = '';
+      tui.requestRender();
+    } else {
+      chatContainer.addChild(
+        new Text(chalk.yellow.bold('Assistant: '), 1, 0)
+      );
+      chatContainer.addChild(new Markdown(text.trim(), 1, 0, markdownTheme));
+      chatContainer.addChild(new Spacer(1));
+      tui.requestRender();
+    }
   }
 
   function addToolInfo(name: string, detail: string) {
@@ -169,9 +199,13 @@ export function run(provider: Provider = 'anthropic') {
     tui.requestRender();
   }
 
+  agent.onAssistantTextDelta = (delta) => {
+    appendAssistantDelta(delta);
+  };
+
   agent.onAssistantText = (text) => {
     hideLoader();
-    addAssistantMessage(text);
+    finalizeAssistantMessage(text);
   };
 
   agent.onToolUse = (name, input) => {

@@ -6,15 +6,20 @@ type InputItem = OpenAI.Responses.ResponseInputItem;
 type OutputItem = OpenAI.Responses.ResponseOutputItem;
 
 export class Agent {
-  private client: OpenAI;
-  // TODO is this right?
+  private client?: OpenAI;
   private conversation: InputItem[];
   private systemPrompt: string;
+  private inferenceFn?: () => Promise<OpenAI.Responses.Response>;
 
-  constructor(apiKey?: string) {
-    this.client = new OpenAI({ apiKey });
+  constructor(options?: { apiKey?: string; runInference?: () => Promise<OpenAI.Responses.Response> }) {
     this.conversation = [];
     this.systemPrompt = systemPrompt;
+
+    if (options?.runInference) {
+      this.inferenceFn = options.runInference;
+    } else {
+      this.client = new OpenAI({ apiKey: options?.apiKey });
+    }
   }
 
   async sendMessage(userInput: string): Promise<void> {
@@ -32,7 +37,6 @@ export class Agent {
 
       this.conversation.push(...response.output);
 
-      // TODO check typing
       const toolCalls: Extract<OutputItem, { type: 'function_call' }>[] = [];
 
       for (const item of response.output) {
@@ -52,7 +56,6 @@ export class Agent {
       const toolOutputs: InputItem[] = [];
 
       for (const call of toolCalls) {
-        // TODO what is this doing
         this.onToolUse?.(call.name, call.arguments);
 
         const handler = getToolHandler(call.name);
@@ -77,25 +80,42 @@ export class Agent {
         });
       }
       this.conversation.push(...toolOutputs);
-
     }
   }
 
-  private async runInference() {
-    // TODO do we need await?
-    return this.client.responses.create({
-      model: 'gpt-5.3-codex',
+  private async runInference(): Promise<OpenAI.Responses.Response> {
+    if (this.inferenceFn) {
+      return await this.inferenceFn();
+    }
+
+    const stream = await this.client!.responses.create({
+      model: 'gpt-5.2',
       instructions: this.systemPrompt,
-      input: [
-        ...this.conversation
-      ],
-      // TODO are the tool specs valid
+      input: [...this.conversation],
       tools: toolSpecs,
       max_output_tokens: 1024,
+      stream: true,
     });
-  };
+
+    let completedResponse: OpenAI.Responses.Response | undefined;
+
+    for await (const event of stream) {
+      if (event.type === 'response.output_text.delta') {
+        this.onAssistantTextDelta?.(event.delta);
+      } else if (event.type === 'response.completed') {
+        completedResponse = event.response;
+      }
+    }
+
+    if (!completedResponse) {
+      throw new Error('Stream ended without a completed response');
+    }
+
+    return completedResponse;
+  }
 
   onAssistantText?: (text: string) => void;
+  onAssistantTextDelta?: (delta: string) => void;
   onToolUse?: (name: string, input: unknown) => void;
   onToolResult?: (name: string, result: string) => void;
   onUsage?: (inputTokens: number, outputTokens: number) => void;

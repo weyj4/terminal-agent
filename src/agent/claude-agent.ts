@@ -3,14 +3,20 @@ import { toolSpecs, getToolHandler } from './claude-tools.js';
 import { systemPrompt } from '../prompts/index.js'
 
 type Message = Anthropic.MessageParam;
+type InferenceFn = () => Promise<Anthropic.Message>;
 
 export class Agent {
-  private client: Anthropic;
+  private client?: Anthropic;
   private conversation: Message[];
   private systemPrompt: string;
+  private inferenceFn?: InferenceFn;
 
-  constructor(apiKey?: string) {
-    this.client = new Anthropic({ apiKey });
+  constructor(options?: { apiKey?: string; runInference?: InferenceFn }) {
+    if (options?.runInference) {
+      this.inferenceFn = options.runInference;
+    } else {
+      this.client = new Anthropic({ apiKey: options?.apiKey });
+    }
     this.conversation = [];
     this.systemPrompt = systemPrompt;
   }
@@ -78,8 +84,12 @@ export class Agent {
     }
   }
 
-  private async runInference() {
-    return await this.client.messages.create({
+  private async runInference(): Promise<Anthropic.Message> {
+    if (this.inferenceFn) {
+      return await this.inferenceFn();
+    }
+
+    const stream = this.client!.messages.stream({
       model: 'claude-opus-4-6-20250527',
       max_tokens: 1024,
       system: [
@@ -91,10 +101,15 @@ export class Agent {
       ],
       messages: this.conversation,
       tools: toolSpecs
+    }).on('text', (delta) => {
+      this.onAssistantTextDelta?.(delta);
     });
+
+    return await stream.finalMessage();
   }
 
   onAssistantText?: (text: string) => void;
+  onAssistantTextDelta?: (delta: string) => void;
   onToolUse?: (name: string, input: unknown) => void;
   onToolResult?: (name: string, result: string) => void;
   onUsage?: (inputTokens: number, outputTokens: number) => void;
