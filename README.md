@@ -2,6 +2,8 @@
 
 A terminal-based AI coding assistant built with [pi-tui](https://github.com/badlogic/pi-tui) and support for multiple LLM providers. It runs in your terminal, has access to tools like reading files and running commands, and works through tasks in an agentic loop.
 
+![terminal-agent screenshot](screenshot.png)
+
 ## Setup
 
 Requires Node.js 18+.
